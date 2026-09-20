@@ -1,70 +1,62 @@
-# Web Research Agent
+# Web Research & Briefing Agent
 
-A Python CLI research agent in progress. Model decisions are implemented: the model chooses search, fetch, or finish,
-and Python validates the choice. Search and page-fetch tools now use the live web. Reports are printed to the
-terminal; citation support still needs human review.
+This is a ReAct-style action/observation loop using a small JSON protocol. The AI chooses whether to search, read a page, or finish with an answer. Python validates the decision, returned as a JSON object, and carries it out. Search results and page contents are sent back to the AI to inform its next decision.
 
-## Setup
+- **State:** the program keeps track of the question, previous actions, findings, and step count during each run.
+- **Validation:** only the three supported actions are accepted. If the AI sends an invalid request, it gets one chance to correct it.
+- **Execution:** failed searches or page reads are reported back to the AI so it can try another approach. The program stops after a fixed number of research steps.
+- **Output:** the AI is instructed to include source links and say when there isn’t enough evidence.
 
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/) **0.10.5**
-and [Ollama](https://ollama.com/download). Python **3.14.5** is pinned;
-uv can download it if needed.
+## How it works
 
-Copy `.env.example` to `.env` and set your installed model name. The start script
-loads this as shell configuration, overriding matching terminal variables.
-Only use a `.env` file you trust. Download models manually with Ollama if needed.
+- You enter a research question.
+- The AI chooses what to do next: search, read a page, or write an answer.
+- The program checks that choice and carries it out.
+- Results help the AI decide its next step.
+- The process repeats until the AI finishes or the program reaches its step limit.
 
-## Run
-
-```sh
-./scripts/start.sh --check  # Test a model reply
-./scripts/start.sh         # Run the research CLI
-./scripts/stop.sh          # Stop Ollama started by start.sh
+```mermaid
+flowchart TD
+    Q[Your question] --> D{AI chooses the next step}
+    D -->|Search| S[Find relevant pages]
+    D -->|Read| R[Read a page]
+    S --> E[Add findings to research notes]
+    R --> E
+    E --> L{Step limit reached?}
+    L -->|No| D
+    L -->|Yes| X[Stop]
+    D -->|Finish| A[Write an answer with source links]
 ```
 
-Start synchronizes the Python environment from the lockfile and starts Ollama
-if the configured local server isn't responding. It waits briefly for startup
-and logs Ollama output to `.runtime/ollama.log`. No environment activation needed.
+- **The AI makes choices:** it can change direction based on what it finds.
+- **The program sets boundaries:** it allows only supported actions and stops after 20 research steps.
+- **Errors become feedback:** if a search or page fails, the AI can try another source.
 
-Ollama stays running after the Python command exits, including after errors.
-Use the stop script when done. It checks the saved PID and process start time
-before sending a stop signal. An existing Ollama service is reused and must be
-stopped manually. Use Ctrl+C to stop the Python CLI. Run one start script at a time.
+## What powers it
 
-## Keeping it reproducible
+- **Python:** coordinates the research steps and keeps track of findings.
+- **Ollama:** runs the AI model on the local computer.
+- **DuckDuckGo:** finds web pages.
+- **Trafilatura:** pulls readable article text from web pages.
+- **A terminal interface:** accepts a question and displays the answer.
 
-Commit `pyproject.toml`, `uv.lock`, and `.python-version` to Git. Python and uv
-versions are pinned, and startup uses `uv sync --locked` to preserve dependency
-versions. `.venv`, `.env`, caches, and runtime files are ignored by Git.
+## Current limits
 
-Add dependencies deliberately with `uv add PACKAGE`. Upgrade deliberately with
-`uv lock --upgrade`, then test. Ollama and model files are managed separately;
-websites and external APIs can still change.
+- Answers and source links need human review; accuracy is not automatically verified.
+- Searches can be rate-limited, and local model responses can be slow.
+- Reports are displayed but not saved automatically. Interrupted research cannot be resumed.
 
-Verified on macOS, 2026-09-18: Ollama **0.17.5**, model **qwen3:14b**, digest
-`bdbd181c33f2ed1b31c972991882db3cf4d192569092138a7d29e973cd9debe8`.
-These are reference versions, not enforced at startup.
+## Next improvements
 
-## Decision loop
+- Show each research step and how long it takes.
+- Save reports and research history.
+- Remove repeated information sent to the model and prevent repeated searches.
+- Check source links and compare answer quality across a small set of test questions.
+- Set a total time limit and keep partial findings if time runs out.
 
-`decisions.py` sends the question, action history, and collected evidence to the
-model using JSON mode. Python validates the action and required argument, with
-one retry for malformed output. `agent.py` executes the tool and saves its result
-for the next decision. Finish returns the model's Markdown answer; citations
-are prompted but their factual support is not yet checked automatically.
+## Keeping it runnable
 
-Run the offline checks with:
-
-```sh
-uv run --locked python -m unittest discover -s tests -v
-```
-
-## Web tools
-
-Search uses [DDGS](https://github.com/deedy5/ddgs) with its DuckDuckGo backend
-(no API key). Page reading uses [Trafilatura](https://trafilatura.readthedocs.io/)
-to extract article text. Versions and indirect dependencies are saved in `uv.lock`.
-Search returns up to five results; pages have a 2 MB download limit and a
-12,000-character text limit. Failures are returned to the model so it can try
-another source. PDF files and pages requiring JavaScript or login are unsupported.
-Search providers can rate-limit requests; a locked dependency cannot prevent that.
+- Python and package versions are recorded so the same environment can be recreated.
+- Startup keeps those versions unchanged unless they are deliberately updated.
+- Ollama and its model files are managed separately; websites can still change.
+- See [OPERATIONS.md](OPERATIONS.md) for setup, start/stop commands, and troubleshooting.

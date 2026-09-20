@@ -2,11 +2,12 @@
 
 import argparse
 import os
+import sys
 
 import requests
 
 
-def ask_llm(messages, *, model=None, base_url=None, timeout=120, json_mode=False):
+def ask_llm(messages, *, model=None, base_url=None, timeout=300, json_mode=False):
     """Send chat history to Ollama and return the assistant's text."""
     model = model or os.environ.get("OLLAMA_MODEL")
     if not model:
@@ -18,6 +19,7 @@ def ask_llm(messages, *, model=None, base_url=None, timeout=120, json_mode=False
     body = {"model": model, "messages": messages, "stream": False}
     if json_mode:
         body["format"] = "json"
+    print("Waiting for model...", file=sys.stderr, flush=True)
     try:
         response = requests.post(
             f"{base_url.rstrip('/')}/api/chat",
@@ -25,6 +27,11 @@ def ask_llm(messages, *, model=None, base_url=None, timeout=120, json_mode=False
             timeout=timeout,
         )
         response.raise_for_status()
+    except requests.exceptions.Timeout as exc:
+        raise RuntimeError(
+            f"Ollama timed out after {timeout} seconds waiting for a response. "
+            "Try again or use a smaller model."
+        ) from exc
     except requests.exceptions.HTTPError as exc:
         detail = exc.response.text if exc.response is not None else str(exc)
         status_code = exc.response.status_code if exc.response is not None else "unknown"
